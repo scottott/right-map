@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Right Turn Route – Safer Navigation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Right Turn Route</h1>
+      <p class="tagline">Safer routes with fewer left turns</p>
+    </header>
+
+    <section class="search-panel">
+      <div class="input-group">
+        <label for="origin">From</label>
+        <input type="text" id="origin" placeholder="Address or place" autocomplete="off" value="437 Sandy Ln, Little Elm, TX">
+      </div>
+      <div class="input-group">
+        <label for="destination">To</label>
+        <input type="text" id="destination" placeholder="Address or place" autocomplete="off" value="512 N Ewing Ave, Dallas, TX">
+      </div>
+      <button type="button" id="route-btn" class="btn-primary">Get Routes</button>
+    </section>
+
+    <section class="results-panel" id="results-panel" aria-hidden="true">
+      <div class="route-cards">
+        <div class="route-card" id="standard-route">
+          <div class="route-header">
+            <span class="route-label">Standard</span>
+            <span class="safety-badge" id="standard-badge">—</span>
+          </div>
+          <div class="route-stats">
+            <span id="standard-distance">—</span>
+            <span id="standard-duration">—</span>
+            <span id="standard-turns">—</span>
+          </div>
+        </div>
+        <div class="route-card highlight" id="rightturn-route">
+          <div class="route-header">
+            <span class="route-label">Right-Turn Preferred</span>
+            <span class="safety-badge" id="rightturn-badge">—</span>
+          </div>
+          <div class="route-stats">
+            <span id="rightturn-distance">—</span>
+            <span id="rightturn-duration">—</span>
+            <span id="rightturn-turns">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="comparison" id="comparison">
+        <div class="safety-rating" id="safety-rating">
+          <span class="rating-label">Safety improvement</span>
+          <span class="rating-value" id="rating-value">—</span>
+        </div>
+      </div>
+      <div class="map-toggle">
+        <button type="button" id="toggle-both" class="btn-toggle">Both</button>
+        <button type="button" id="toggle-standard" class="btn-toggle">Standard</button>
+        <button type="button" id="toggle-rightturn" class="btn-toggle">Right-Turn</button>
+      </div>
+    </section>
+
+    <div id="map"></div>
+
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>
