@@ -82,7 +82,7 @@ async function fetchRouteWithWaypoints(coordPairs) {
     steps: 'true',
     alternatives: 'false'
   });
-  const res = await fetch(`${OSRM_BASE}/${encodeURIComponent(coords)}?${params}`);
+  const res = await fetch(`${NOMINATIM_BASE}?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || 'Routing failed');
