@@ -44,9 +44,7 @@ async function geocode(query) {
     format: 'json',
     limit: 1
   });
-  const res = await fetch(`${NOMINATIM_BASE}?${params}`, {
-    headers: { 'User-Agent': USER_AGENT }
-  });
+  const res = await fetch(`${NOMINATIM_BASE}?${params}`);
   if (!res.ok) throw new Error('Geocoding failed');
   const data = await res.json();
   if (!data || data.length === 0) throw new Error(`No results for "${query}"`);
@@ -82,7 +80,7 @@ async function fetchRouteWithWaypoints(coordPairs) {
     steps: 'true',
     alternatives: 'false'
   });
-  const res = await fetch(`${NOMINATIM_BASE}?${params}`);
+  const res = await fetch(`${OSRM_BASE}/${encodeURIComponent(coords)}?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || 'Routing failed');
