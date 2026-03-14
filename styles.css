@@ -118,6 +118,10 @@ body {
   padding: 1rem 1.25rem;
   background: var(--surface);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .results-panel[aria-hidden="true"] {
@@ -129,6 +133,7 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
   margin-bottom: 1rem;
+  flex-shrink: 0;
 }
 
 .route-card {
@@ -180,6 +185,7 @@ body {
 
 .comparison {
   margin-bottom: 1rem;
+  flex-shrink: 0;
 }
 
 .safety-rating {
@@ -228,6 +234,7 @@ body {
 .map-toggle {
   display: flex;
   gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .btn-toggle {
@@ -252,12 +259,26 @@ body {
   border-color: var(--accent);
 }
 
-/* Turn-by-turn directions */
+/* View toggle: Map vs Directions – always visible */
+.view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-shrink: 0;
+}
+
+.view-toggle .btn-toggle {
+  flex: 1;
+}
+
+/* Turn-by-turn directions – appears below the map (order ensures layout) */
 .directions-panel {
   margin-top: 1rem;
   padding: 0.85rem 1.25rem;
   background: var(--surface);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  order: 2;
+  flex-shrink: 0;
 }
 
 .directions-heading {
@@ -279,11 +300,72 @@ body {
   margin-bottom: 0.35rem;
 }
 
-/* Map */
-#map {
+/* Active step (for geolocation: current/next turn) */
+.directions-list li.active {
+  background: rgba(88, 166, 255, 0.15);
+  border-left: 4px solid var(--accent);
+  margin-left: -1.25rem;
+  padding-left: calc(1.25rem - 4px);
+  margin-right: -1.25rem;
+  padding-right: 1.25rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  scroll-margin: 2rem;
+}
+
+/* List view: full area, driver-readable type */
+.app.view-list #map {
+  display: none;
+}
+
+.app.view-list .results-panel {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app.view-list .directions-panel {
+  order: 0;
+  flex: 1 1 0;
+  max-height: none;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0.5rem;
+  min-height: 200px;
+}
+
+.app.view-list .directions-heading {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.app.view-list .directions-list {
+  font-size: 1.35rem;
+  line-height: 1.55;
+  padding-left: 1.5rem;
+}
+
+.app.view-list .directions-list li {
+  margin-bottom: 0.85rem;
+  padding: 0.4rem 0;
+}
+
+/* Map: sits under toggles so it’s visible without scrolling; order keeps it above the list */
+.map-container,
+#map {
+  order: 1;
+  flex: 1 1 0;
   min-height: 280px;
   width: 100%;
+  margin: 0.5rem 0 0;
+}
+
+/* In Map view, keep directions list compact below the map */
+.app.view-map .directions-panel {
+  flex: 0 0 auto;
+  max-height: 35vh;
+  overflow-y: auto;
+  margin-top: 0.5rem;
 }
 
 /* Status */

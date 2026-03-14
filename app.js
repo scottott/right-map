@@ -38,6 +38,14 @@ function initMap() {
   }
 }
 
+/** Call after the map container gets real size (e.g. when results panel is shown or when switching to Map view). */
+function refreshMapSize() {
+  if (!map) return;
+  requestAnimationFrame(() => {
+    map.invalidateSize();
+  });
+}
+
 async function geocode(query) {
   const params = new URLSearchParams({
     q: query,
@@ -227,11 +235,37 @@ function getStepInstructions(route) {
   return steps;
 }
 
+/** Current step index for highlighting (used by geolocation). Set via setActiveStep(). */
+let activeStepIndex = null;
+
 function renderDirectionsList(route) {
   const listEl = document.getElementById('directions-list');
   if (!listEl) return;
   const steps = getStepInstructions(route);
-  listEl.innerHTML = steps.map(s => `<li>${s.text}</li>`).join('');
+  listEl.innerHTML = steps.map((s, i) => {
+    const id = `direction-step-${i}`;
+    const active = i === activeStepIndex ? ' active' : '';
+    return `<li data-step-index="${i}" id="${id}" class="${active}">${s.text}</li>`;
+  }).join('');
+}
+
+/** Set the current/next step (e.g. from geolocation). Highlights that item and scrolls it into view. */
+function setActiveStep(index) {
+  const listEl = document.getElementById('directions-list');
+  if (!listEl) return;
+  activeStepIndex = index;
+  listEl.querySelectorAll('li').forEach((li, i) => {
+    li.classList.toggle('active', i === index);
+  });
+  scrollActiveStepIntoView();
+}
+
+/** Scroll the active step into view (for driver list view). Call after setActiveStep or when list view opens. */
+function scrollActiveStepIntoView() {
+  const active = document.querySelector('.directions-list li.active');
+  if (active) {
+    active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 document.getElementById('route-btn').addEventListener('click', async () => {
@@ -391,6 +425,8 @@ document.getElementById('route-btn').addEventListener('click', async () => {
     document.getElementById('results-panel').setAttribute('aria-hidden', 'false');
     document.getElementById('results-panel').style.display = 'block';
 
+    refreshMapSize();
+
     document.getElementById('standard-distance').textContent = formatDistance(standard.distance);
     document.getElementById('standard-duration').textContent = formatDuration(standard.duration);
     document.getElementById('standard-turns').textContent =
@@ -430,4 +466,28 @@ document.getElementById('route-btn').addEventListener('click', async () => {
   }
 });
 
+function initViewToggle() {
+  const app = document.getElementById('app-root');
+  const btnMap = document.getElementById('view-map');
+  const btnList = document.getElementById('view-list');
+  if (!app || !btnMap || !btnList) return;
+
+  btnMap.addEventListener('click', () => {
+    app.classList.remove('view-list');
+    app.classList.add('view-map');
+    btnMap.classList.add('active');
+    btnList.classList.remove('active');
+    refreshMapSize();
+  });
+
+  btnList.addEventListener('click', () => {
+    app.classList.remove('view-map');
+    app.classList.add('view-list');
+    btnList.classList.add('active');
+    btnMap.classList.remove('active');
+    scrollActiveStepIntoView();
+  });
+}
+
 initMap();
+initViewToggle();

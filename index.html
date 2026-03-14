@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app">
+  <div class="app view-map" id="app-root">
     <header class="header">
       <h1>Right Turn Route</h1>
       <p class="tagline">Safer routes with fewer left turns</p>
@@ -62,13 +62,16 @@
         <button type="button" id="toggle-standard" class="btn-toggle">Standard</button>
         <button type="button" id="toggle-rightturn" class="btn-toggle">Right-Turn</button>
       </div>
+      <div class="view-toggle" aria-label="Switch between map and directions">
+        <button type="button" id="view-map" class="btn-toggle active">Map</button>
+        <button type="button" id="view-list" class="btn-toggle">Directions</button>
+      </div>
+      <div id="map" class="map-container"></div>
       <div class="directions-panel" id="directions-panel">
         <h3 class="directions-heading">Turn-by-turn</h3>
         <ol class="directions-list" id="directions-list" aria-label="Step-by-step directions"></ol>
       </div>
     </section>
-
-    <div id="map"></div>
 
     <div class="status" id="status" aria-live="polite"></div>
   </div>
