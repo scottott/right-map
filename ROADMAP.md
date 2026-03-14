@@ -14,6 +14,23 @@ This document outlines the product roadmap and target markets so we can stay on 
 
 ---
 
+## In-the-car UX improvements (priority order)
+
+Real-world feedback: tackle one step at a time, in this order.
+
+| Step | Issue | Fix |
+|------|--------|-----|
+| **1** | White on black is hard to see in Texas sun | Improve daylight readability: light theme or higher-contrast palette (lighter surfaces, darker text). Optional theme toggle. |
+| **2** | Follow button too close to other buttons; needs space; shouldn’t be so prominent | Add spacing (margin/padding) around Follow my location; style as secondary (e.g. outline, smaller) so it’s tappable but not dominant. |
+| **3** | In list view, scrolling up to reach Map doesn’t work (screen springs back) | Always-visible way to switch to Map: sticky Map/Directions bar above the list, or floating “Map” button in list view, so user isn’t trapped by list scroll. |
+| **4** | Map too small, not zoomed in enough; should fill screen and show tighter view | Map view: map fills available space; tighter default zoom when following (e.g. 18). Track/pan already works. |
+| **5** | Buttons and route comparison need more real estate; data too small to read | Move route cards, toggles, and Follow into a pull-up (bottom sheet) panel; give map more room; make Standard vs Right-Turn stats larger and readable. |
+| **6** | Off-route: app doesn’t recalculate when I leave the path | When user is detected far from route (snap distance > threshold), recalculate from current position to destination (or next waypoint); update route and list. |
+
+**Suggested sequence:** Do 1 → 2 → 3 first (readability + tap targets + escape from list). Then 4 (map size/zoom), then 5 (pull-up + bigger data). Do 6 (recalculate) after the layout is solid.
+
+---
+
 ## Development roadmap
 
 ### Phase 1 – Multi-stop, fixed order (no optimization)

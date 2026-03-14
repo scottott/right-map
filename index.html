@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -10,8 +10,13 @@
 <body>
   <div class="app view-map" id="app-root">
     <header class="header">
-      <h1>Right Turn Route</h1>
-      <p class="tagline">Safer routes with fewer left turns</p>
+      <div class="header-row">
+        <div>
+          <h1>Right Turn Route</h1>
+          <p class="tagline">Safer routes with fewer left turns</p>
+        </div>
+        <button type="button" id="theme-toggle" class="btn-theme" aria-label="Switch to dark theme" title="Switch to dark theme">Dark</button>
+      </div>
     </header>
 
     <section class="search-panel">

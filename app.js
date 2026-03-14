@@ -679,6 +679,28 @@ function initFollowLocation() {
   btn.addEventListener('click', startFollowingLocation);
 }
 
+const THEME_STORAGE_KEY = 'rightmap-theme';
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY) || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.textContent = saved === 'light' ? 'Dark' : 'Light';
+  btn.setAttribute('aria-label', saved === 'light' ? 'Switch to dark theme' : 'Switch to light theme');
+  btn.title = btn.getAttribute('aria-label');
+  btn.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_STORAGE_KEY, next);
+    btn.textContent = next === 'light' ? 'Dark' : 'Light';
+    btn.setAttribute('aria-label', next === 'light' ? 'Switch to dark theme' : 'Switch to light theme');
+    btn.title = btn.getAttribute('aria-label');
+  });
+}
+
+initTheme();
 initMap();
 initViewToggle();
 initFollowLocation();
