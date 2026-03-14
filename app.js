@@ -20,6 +20,13 @@ let map;
 let standardLayer = null;
 let rightturnLayer = null;
 
+/** Current route used for snap-to-route and step index (set when showing Standard/Right-Turn/Both). */
+let currentRouteForLocation = null;
+/** Leaflet marker for user's (snapped) position when following. */
+let locationMarker = null;
+/** navigator.geolocation.watchPosition id, so we can clear it. */
+let locationWatchId = null;
+
 function setStatus(msg, isError = false) {
   const el = document.getElementById('status');
   el.textContent = msg;
@@ -44,6 +51,155 @@ function refreshMapSize() {
   requestAnimationFrame(() => {
     map.invalidateSize();
   });
+}
+
+// --- Snap to route (for location-aware list and map marker) ---
+
+/** Closest point on segment [a, b] to point p. a, b, p are [lon, lat]. Returns { point: [lon, lat], t: 0..1 }. */
+function closestPointOnSegment(a, b, p) {
+  const ax = a[0], ay = a[1], bx = b[0], by = b[1], px = p[0], py = p[1];
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return { point: [ax, ay], t: 0 };
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return { point: [ax + t * dx, ay + t * dy], t };
+}
+
+/** Haversine distance in meters between two [lon, lat] points. */
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const dLat = (b[1] - a[1]) * Math.PI / 180;
+  const dLon = (b[0] - a[0]) * Math.PI / 180;
+  const lat1 = a[1] * Math.PI / 180, lat2 = b[1] * Math.PI / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+/** Snap (lat, lon) to the route polyline. coords = array of [lon, lat]. Returns { lat, lon, distanceAlong } or null if coords empty. */
+function snapToRoute(lat, lon, coords) {
+  if (!coords || coords.length < 2) return null;
+  const p = [lon, lat];
+  let best = null;
+  let bestDist = Infinity;
+  let distanceAlong = 0;
+  let segStartAlong = 0;
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i], b = coords[i + 1];
+    const segLen = haversineMeters(a, b);
+    const { point } = closestPointOnSegment(a, b, p);
+    const d = haversineMeters(p, point);
+    const t = segLen > 0 ? haversineMeters(a, point) / segLen : 0;
+    const along = segStartAlong + t * segLen;
+    if (d < bestDist) {
+      bestDist = d;
+      best = { lat: point[1], lon: point[0], distanceAlong: along };
+    }
+    segStartAlong += segLen;
+  }
+  return best;
+}
+
+/** Map distance-along (meters) to step index. route has legs[].steps[].distance. */
+function distanceAlongToStepIndex(route, distanceAlong) {
+  if (!route.legs || !route.legs.length) return 0;
+  let sum = 0;
+  let stepIndex = 0;
+  for (const leg of route.legs) {
+    if (!leg.steps) continue;
+    for (const step of leg.steps) {
+      const stepEnd = sum + (step.distance != null ? step.distance : 0);
+      if (distanceAlong <= stepEnd) return stepIndex;
+      sum = stepEnd;
+      stepIndex++;
+    }
+  }
+  return Math.max(0, stepIndex - 1);
+}
+
+/** Update list and map from a snapped position (step index). */
+function updateLocationFromSnap(snapped, stepIndex) {
+  setActiveStep(stepIndex);
+  if (locationMarker && snapped) {
+    locationMarker.setLatLng([snapped.lat, snapped.lon]);
+  }
+}
+
+function startFollowingLocation() {
+  if (!currentRouteForLocation) {
+    setStatus('Get a route first, then tap Follow my location.', true);
+    return;
+  }
+  if (!navigator.geolocation) {
+    setStatus('Geolocation is not supported by this browser.', true);
+    return;
+  }
+
+  const btn = document.getElementById('follow-location-btn');
+  if (locationWatchId != null) {
+    stopFollowingLocation();
+    return;
+  }
+
+  const coords = currentRouteForLocation.coords;
+  const start = coords && coords.length ? [coords[0][1], coords[0][0]] : [0, 0];
+
+  if (!locationMarker && map) {
+    locationMarker = L.circleMarker(start, {
+      radius: 10,
+      fillColor: '#3fb950',
+      color: '#fff',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.9
+    });
+    locationMarker.addTo(map);
+  } else if (locationMarker) {
+    locationMarker.setLatLng(start);
+  }
+  if (locationMarker && !map.hasLayer(locationMarker)) {
+    locationMarker.addTo(map);
+  }
+
+  locationWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const snapped = snapToRoute(lat, lon, currentRouteForLocation.coords);
+      if (!snapped) return;
+      const stepIndex = distanceAlongToStepIndex(currentRouteForLocation.route, snapped.distanceAlong);
+      updateLocationFromSnap(snapped, stepIndex);
+      setStatus('');
+    },
+    (err) => {
+      if (err.code === 1) setStatus('Location permission denied.', true);
+      else if (err.code === 3) setStatus('Location unavailable.', true);
+      else setStatus('Location error.', true);
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+  );
+
+  btn.setAttribute('aria-pressed', 'true');
+  btn.textContent = 'Stop following';
+  setStatus('Following your location…');
+}
+
+function stopFollowingLocation() {
+  if (locationWatchId != null) {
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
+  }
+  if (locationMarker && map) {
+    map.removeLayer(locationMarker);
+    locationMarker = null;
+  }
+  const btn = document.getElementById('follow-location-btn');
+  if (btn) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = 'Follow my location';
+  }
+  setStatus('');
 }
 
 async function geocode(query) {
@@ -386,6 +542,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
         map.fitBounds(L.latLngBounds(allCoords.map(c => [c[1], c[0]])), { padding: [40, 40], maxZoom: 14 });
       }
       setActiveToggle('toggle-both');
+      currentRouteForLocation = { route: standard, coords: stdGeo };
       renderDirectionsList(standard);
     };
 
@@ -396,6 +553,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
         map.fitBounds(L.latLngBounds(stdGeo.map(c => [c[1], c[0]])), { padding: [40, 40], maxZoom: 14 });
       }
       setActiveToggle('toggle-standard');
+      currentRouteForLocation = { route: standard, coords: stdGeo };
       renderDirectionsList(standard);
     };
 
@@ -406,6 +564,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
         map.fitBounds(L.latLngBounds(rtGeo.map(c => [c[1], c[0]])), { padding: [40, 40], maxZoom: 14 });
       }
       setActiveToggle('toggle-rightturn');
+      currentRouteForLocation = { route: rightturn, coords: rtGeo };
       renderDirectionsList(rightturn);
     };
 
@@ -489,5 +648,12 @@ function initViewToggle() {
   });
 }
 
+function initFollowLocation() {
+  const btn = document.getElementById('follow-location-btn');
+  if (!btn) return;
+  btn.addEventListener('click', startFollowingLocation);
+}
+
 initMap();
 initViewToggle();
+initFollowLocation();

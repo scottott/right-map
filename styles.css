@@ -271,6 +271,34 @@ body {
   flex: 1;
 }
 
+.location-follow {
+  margin-top: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-follow {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--success);
+  background: rgba(63, 185, 80, 0.15);
+  border: 1px solid rgba(63, 185, 80, 0.4);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.btn-follow:hover {
+  background: rgba(63, 185, 80, 0.25);
+  color: var(--success);
+}
+
+.btn-follow[aria-pressed="true"] {
+  color: var(--bg);
+  background: var(--success);
+  border-color: var(--success);
+}
+
 /* Turn-by-turn directions – appears below the map (order ensures layout) */
 .directions-panel {
   margin-top: 1rem;
