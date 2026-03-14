@@ -252,6 +252,33 @@ body {
   border-color: var(--accent);
 }
 
+/* Turn-by-turn directions */
+.directions-panel {
+  margin-top: 1rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--surface);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.directions-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.directions-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.directions-list li {
+  margin-bottom: 0.35rem;
+}
+
 /* Map */
 #map {
   flex: 1;

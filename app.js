@@ -194,6 +194,46 @@ function getRightTurnPct(turns) {
   return Math.round((turns.right / turns.total) * 100);
 }
 
+/** Build human-readable step instructions from an OSRM route. */
+function getStepInstructions(route) {
+  if (!route.legs) return [];
+  const steps = [];
+  for (const leg of route.legs) {
+    if (!leg.steps) continue;
+    for (const step of leg.steps) {
+      const m = step.maneuver;
+      const name = (step.name && step.name.trim()) || '';
+      const dist = step.distance != null ? formatDistance(step.distance) : '';
+      const type = (m && m.type) || '';
+      const mod = (m && m.modifier && m.modifier.toLowerCase()) || '';
+
+      let text = '';
+      if (type === 'depart') {
+        text = name ? `Head out on ${name}` : 'Head out';
+      } else if (type === 'arrive') {
+        text = 'Arrive at destination';
+      } else if (type === 'turn' || type.includes('turn')) {
+        if (mod.includes('left')) text = name ? `Turn left onto ${name}` : 'Turn left';
+        else if (mod.includes('right')) text = name ? `Turn right onto ${name}` : 'Turn right';
+        else if (mod.includes('straight')) text = name ? `Continue straight on ${name}` : 'Continue straight';
+        else text = name ? `Turn onto ${name}` : 'Turn';
+      } else {
+        text = name ? `Continue on ${name}` : 'Continue';
+      }
+      if (dist && type !== 'arrive') text += ` — ${dist}`;
+      steps.push({ text, distance: step.distance });
+    }
+  }
+  return steps;
+}
+
+function renderDirectionsList(route) {
+  const listEl = document.getElementById('directions-list');
+  if (!listEl) return;
+  const steps = getStepInstructions(route);
+  listEl.innerHTML = steps.map(s => `<li>${s.text}</li>`).join('');
+}
+
 document.getElementById('route-btn').addEventListener('click', async () => {
   const origin = document.getElementById('origin').value.trim();
   const destination = document.getElementById('destination').value.trim();
@@ -312,6 +352,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
         map.fitBounds(L.latLngBounds(allCoords.map(c => [c[1], c[0]])), { padding: [40, 40], maxZoom: 14 });
       }
       setActiveToggle('toggle-both');
+      renderDirectionsList(standard);
     };
 
     const showStandard = () => {
@@ -321,6 +362,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
         map.fitBounds(L.latLngBounds(stdGeo.map(c => [c[1], c[0]])), { padding: [40, 40], maxZoom: 14 });
       }
       setActiveToggle('toggle-standard');
+      renderDirectionsList(standard);
     };
 
     const showRightturn = () => {
@@ -330,6 +372,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
         map.fitBounds(L.latLngBounds(rtGeo.map(c => [c[1], c[0]])), { padding: [40, 40], maxZoom: 14 });
       }
       setActiveToggle('toggle-rightturn');
+      renderDirectionsList(rightturn);
     };
 
     bothBtn.onclick = showBoth;
@@ -343,6 +386,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
       bothBtn.style.display = '';
       showBoth();
     }
+    document.getElementById('directions-panel').style.display = 'block';
 
     document.getElementById('results-panel').setAttribute('aria-hidden', 'false');
     document.getElementById('results-panel').style.display = 'block';
