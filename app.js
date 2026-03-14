@@ -16,6 +16,9 @@ const MAX_DETOUR_RATIO = 1.6;
 /** Max number of via points (fix up to this many left turns, one at a time) */
 const MAX_VIA_ITERATIONS = 3;
 
+/** Zoom level when following location (street-level, similar to navigation apps). */
+const NAVIGATION_ZOOM = 17;
+
 let map;
 let standardLayer = null;
 let rightturnLayer = null;
@@ -51,6 +54,22 @@ function refreshMapSize() {
   requestAnimationFrame(() => {
     map.invalidateSize();
   });
+}
+
+/** Fit the map so the initial view includes the user's location (once). Call after showing results. */
+function fitMapToIncludeUser() {
+  if (!map || !navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const bounds = map.getBounds().clone();
+      bounds.extend([lat, lon]);
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    },
+    () => { /* ignore: keep current route-only view */ },
+    { enableHighAccuracy: false, maximumAge: 60000, timeout: 10000 }
+  );
 }
 
 // --- Snap to route (for location-aware list and map marker) ---
@@ -124,6 +143,9 @@ function updateLocationFromSnap(snapped, stepIndex) {
   if (locationMarker && snapped) {
     locationMarker.setLatLng([snapped.lat, snapped.lon]);
   }
+  if (map && snapped && locationWatchId != null) {
+    map.panTo([snapped.lat, snapped.lon]);
+  }
 }
 
 function startFollowingLocation() {
@@ -161,6 +183,8 @@ function startFollowingLocation() {
   if (locationMarker && !map.hasLayer(locationMarker)) {
     locationMarker.addTo(map);
   }
+
+  map.setView(start, NAVIGATION_ZOOM);
 
   locationWatchId = navigator.geolocation.watchPosition(
     (pos) => {
@@ -585,6 +609,7 @@ document.getElementById('route-btn').addEventListener('click', async () => {
     document.getElementById('results-panel').style.display = 'block';
 
     refreshMapSize();
+    fitMapToIncludeUser();
 
     document.getElementById('standard-distance').textContent = formatDistance(standard.distance);
     document.getElementById('standard-duration').textContent = formatDuration(standard.duration);
