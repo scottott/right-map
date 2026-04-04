@@ -5,9 +5,25 @@
  */
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
-const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
-const OSRM_NEAREST = 'https://router.project-osrm.org/nearest/v1/driving';
 const USER_AGENT = 'RightTurnRoutePoC/1.0 (contact@example.com)';
+
+/** Use Netlify function on production so OSRM errors still get CORS + optional mirror fallback. */
+function useOsrmProxy() {
+  const h = typeof window !== 'undefined' ? window.location.hostname : '';
+  return h === 'rightmap.app' || h.endsWith('.netlify.app');
+}
+
+/** @param {string} path e.g. route/v1/driving/lon,lat;lon,lat (coords segment may be encodeURIComponent) */
+function osrmFetchUrl(path, queryString) {
+  if (useOsrmProxy()) {
+    const p = new URLSearchParams();
+    p.set('path', path);
+    if (queryString) p.set('q', queryString);
+    return `/.netlify/functions/osrm-proxy?${p}`;
+  }
+  const q = queryString ? `?${queryString}` : '';
+  return `https://router.project-osrm.org/${path}${q}`;
+}
 
 /** Distance in meters to place the "right-turn" via point past the intersection */
 const VIA_OFFSET_M = 80;
@@ -251,7 +267,8 @@ async function fetchRoute(coordPairs) {
     steps: 'true',
     alternatives: 'true'
   });
-  const res = await fetch(`${OSRM_BASE}/${encodeURIComponent(coords)}?${params}`);
+  const path = `route/v1/driving/${encodeURIComponent(coords)}`;
+  const res = await fetch(osrmFetchUrl(path, params.toString()));
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || 'Routing failed');
@@ -268,7 +285,8 @@ async function fetchRouteWithWaypoints(coordPairs) {
     steps: 'true',
     alternatives: 'false'
   });
-  const res = await fetch(`${OSRM_BASE}/${encodeURIComponent(coords)}?${params}`);
+  const path = `route/v1/driving/${encodeURIComponent(coords)}`;
+  const res = await fetch(osrmFetchUrl(path, params.toString()));
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || 'Routing failed');
@@ -280,7 +298,8 @@ async function fetchRouteWithWaypoints(coordPairs) {
 
 /** Snap (lon, lat) to the nearest road; returns { lat, lon } or null. */
 async function snapToRoad(lon, lat) {
-  const res = await fetch(`${OSRM_NEAREST}/${lon},${lat}?number=1`);
+  const path = `nearest/v1/driving/${lon},${lat}`;
+  const res = await fetch(osrmFetchUrl(path, 'number=1'));
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.waypoints || data.waypoints.length === 0) return null;
