@@ -1,0 +1,623 @@
+/* Right Turn Route PoC – Mobile-first responsive */
+
+/* Light theme (default) – readable in daylight / Texas sun */
+:root,
+[data-theme="light"] {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface-hover: #e8eaed;
+  --text: #1a1a1a;
+  --text-muted: #5f6368;
+  --accent: #0969da;
+  --accent-dim: rgba(9, 105, 218, 0.15);
+  --success: #1a7f37;
+  --warning: #9a6700;
+  --danger: #cf222e;
+  --radius: 10px;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --border: rgba(0, 0, 0, 0.08);
+  --border-input: rgba(0, 0, 0, 0.2);
+}
+
+/* Dark theme – optional for night driving */
+[data-theme="dark"] {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --surface-hover: #243044;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --accent-dim: #388bfd66;
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-input: rgba(255, 255, 255, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* After a route loads: lock the shell to the viewport so the map can use all leftover space */
+.app.has-results {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app.has-results .header {
+  padding: 0.65rem 1rem;
+  flex-shrink: 0;
+}
+
+.app.has-results .header h1 {
+  font-size: 1.2rem;
+}
+
+.app.has-results .tagline {
+  font-size: 0.8rem;
+}
+
+.app.has-results .search-panel {
+  padding: 0.65rem 1rem;
+  flex-shrink: 0;
+}
+
+.app.has-results .status {
+  flex-shrink: 0;
+  padding: 0.35rem 1rem;
+}
+
+/* Header */
+.header {
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.tagline {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.btn-theme {
+  flex-shrink: 0;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.btn-theme:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* Search panel */
+.search-panel {
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.input-group {
+  margin-bottom: 0.75rem;
+}
+
+.input-group label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  font-size: 1rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.input-group input::placeholder {
+  color: var(--text-muted);
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Results panel */
+.results-panel {
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Route stats + toggles: scroll when tall; map keeps the rest of the viewport */
+.results-chrome {
+  flex-shrink: 0;
+}
+
+.app.has-results .results-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.5rem 0 0;
+  border-bottom: none;
+}
+
+.app.has-results .results-chrome {
+  padding: 0 1rem;
+  overflow-x: hidden;
+}
+
+.app.has-results.view-map .results-chrome {
+  flex: 0 1 auto;
+  max-height: min(32vh, 300px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app.has-results.view-list .results-chrome {
+  padding: 0 1rem;
+}
+
+.results-panel[aria-hidden="true"] {
+  display: none;
+}
+
+.route-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+}
+
+.app.has-results .route-cards {
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.app.has-results .comparison {
+  margin-bottom: 0.65rem;
+}
+
+.app.has-results .view-toggle {
+  margin-top: 0.5rem;
+}
+
+.route-card {
+  padding: 0.85rem;
+  background: var(--bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.route-card.highlight {
+  border-color: var(--accent-dim);
+  background: var(--accent-dim);
+}
+
+.route-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.route-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.safety-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+}
+
+.safety-badge.a { background: rgba(26, 127, 55, 0.2); color: var(--success); }
+.safety-badge.b { background: rgba(26, 127, 55, 0.15); color: var(--success); }
+.safety-badge.c { background: rgba(154, 103, 0, 0.2); color: var(--warning); }
+.safety-badge.d { background: rgba(154, 103, 0, 0.15); color: var(--warning); }
+.safety-badge.f { background: rgba(207, 34, 46, 0.2); color: var(--danger); }
+.safety-badge.na { background: rgba(95, 99, 104, 0.2); color: var(--text-muted); }
+[data-theme="dark"] .safety-badge.a,
+[data-theme="dark"] .safety-badge.b { background: rgba(63, 185, 80, 0.25); }
+[data-theme="dark"] .safety-badge.c,
+[data-theme="dark"] .safety-badge.d { background: rgba(210, 153, 34, 0.2); }
+[data-theme="dark"] .safety-badge.f { background: rgba(248, 81, 73, 0.2); }
+[data-theme="dark"] .safety-badge.na { background: rgba(139, 148, 158, 0.2); }
+
+.route-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.comparison {
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+}
+
+.safety-rating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem;
+  background: var(--bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.rating-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.rating-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+}
+
+.rating-value .grade-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  margin-right: 0.35rem;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.rating-value .grade-badge.a,
+.rating-value .grade-badge.b { background: rgba(26, 127, 55, 0.2); color: var(--success); }
+.rating-value .grade-badge.c,
+.rating-value .grade-badge.d { background: rgba(154, 103, 0, 0.2); color: var(--warning); }
+.rating-value .grade-badge.f { background: rgba(207, 34, 46, 0.2); color: var(--danger); }
+[data-theme="dark"] .rating-value .grade-badge.a,
+[data-theme="dark"] .rating-value .grade-badge.b { background: rgba(63, 185, 80, 0.25); }
+[data-theme="dark"] .rating-value .grade-badge.c,
+[data-theme="dark"] .rating-value .grade-badge.d { background: rgba(210, 153, 34, 0.2); }
+[data-theme="dark"] .rating-value .grade-badge.f { background: rgba(248, 81, 73, 0.2); }
+
+.rating-value.rating-note {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.map-toggle {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-toggle {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.btn-toggle:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.btn-toggle.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* View toggle: Map vs Directions – always visible */
+.view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-shrink: 0;
+}
+
+.view-toggle .btn-toggle {
+  flex: 1;
+}
+
+.location-follow {
+  margin-top: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-follow {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--success);
+  background: rgba(26, 127, 55, 0.12);
+  border: 1px solid rgba(26, 127, 55, 0.4);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.btn-follow:hover {
+  background: rgba(26, 127, 55, 0.2);
+  color: var(--success);
+}
+
+.btn-follow[aria-pressed="true"] {
+  color: #fff;
+  background: var(--success);
+  border-color: var(--success);
+}
+
+[data-theme="dark"] .btn-follow {
+  background: rgba(63, 185, 80, 0.15);
+  border-color: rgba(63, 185, 80, 0.4);
+}
+[data-theme="dark"] .btn-follow:hover {
+  background: rgba(63, 185, 80, 0.25);
+}
+[data-theme="dark"] .btn-follow[aria-pressed="true"] {
+  color: var(--bg);
+}
+
+/* Turn-by-turn directions – appears below the map (order ensures layout) */
+.directions-panel {
+  margin-top: 1rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  order: 2;
+  flex-shrink: 0;
+}
+
+.app.has-results .directions-panel {
+  margin-top: 0;
+  padding: 0.65rem 1rem;
+}
+
+.directions-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.directions-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.directions-list li {
+  margin-bottom: 0.35rem;
+}
+
+/* Active step (for geolocation: current/next turn) */
+.directions-list li.active {
+  background: var(--accent-dim);
+  border-left: 4px solid var(--accent);
+  margin-left: -1.25rem;
+  padding-left: calc(1.25rem - 4px);
+  margin-right: -1.25rem;
+  padding-right: 1.25rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  scroll-margin: 2rem;
+}
+
+/* List view: full area, driver-readable type */
+.app.view-list #map {
+  display: none;
+}
+
+.app.view-list .results-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app.view-list .directions-panel {
+  order: 0;
+  flex: 1 1 0;
+  max-height: none;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0.5rem;
+  min-height: 200px;
+}
+
+.app.view-list .directions-heading {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.app.view-list .directions-list {
+  font-size: 1.35rem;
+  line-height: 1.55;
+  padding-left: 1.5rem;
+}
+
+.app.view-list .directions-list li {
+  margin-bottom: 0.85rem;
+  padding: 0.4rem 0;
+}
+
+/* Map: sits under toggles so it’s visible without scrolling; order keeps it above the list */
+.map-container,
+#map {
+  order: 1;
+  flex: 1 1 0;
+  min-height: 280px;
+  width: 100%;
+  margin: 0.5rem 0 0;
+}
+
+/* Full-width map once results are shown (panel has no side padding) */
+.app.has-results .map-container,
+.app.has-results #map {
+  margin-top: 0.35rem;
+  margin-left: 0;
+  margin-right: 0;
+  min-height: 0;
+  flex: 1 1 0;
+}
+
+/* In Map view, keep directions list compact below the map */
+.app.view-map .directions-panel {
+  flex: 0 0 auto;
+  max-height: 35vh;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
+.app.has-results.view-map .directions-panel {
+  max-height: min(22vh, 200px);
+  flex-shrink: 0;
+  margin-top: 0;
+  border-top: 1px solid var(--border);
+}
+
+.app.has-results.view-map .directions-list {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+/* Larger map controls for low vision / touch */
+.leaflet-bar a {
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  font-size: 1.35rem;
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  text-indent: 0;
+}
+
+/* Status */
+.status {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-height: 1.5rem;
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+.status.loading {
+  color: var(--accent);
+}
+
+/* Larger screens: use full width so the map stays as large as possible */
+@media (min-width: 600px) {
+  .map-container,
+  #map {
+    min-height: 320px;
+  }
+
+  .app:not(.has-results) {
+    max-width: 640px;
+    margin: 0 auto;
+    box-shadow: var(--shadow);
+  }
+
+  .leaflet-bar a {
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    font-size: 1.45rem;
+  }
+}
