@@ -1,7 +1,10 @@
 /**
- * Same-origin proxy for OSRM (avoids browser CORS when the demo returns 4xx/504 without CORS headers).
- * Tries a primary host, then a public mirror.
+ * Same-origin proxy for OSRM (avoids browser CORS when the demo returns errors without CORS headers).
+ * Uses Node https (no fetch) for compatibility with all Netlify Lambda Node runtimes.
  */
+
+const https = require('https');
+const { URL } = require('url');
 
 const MIRRORS = [
   'https://router.project-osrm.org',
@@ -21,6 +24,40 @@ function allowedPath(p) {
   return true;
 }
 
+function httpsGet(urlString) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlString);
+    const req = https.request(
+      url,
+      {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'RightMap/1.0 (https://rightmap.app; OSRM proxy)',
+          Accept: 'application/json'
+        },
+        timeout: 28000
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode || 502,
+            headers: res.headers,
+            body: Buffer.concat(chunks).toString('utf8')
+          });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Upstream timeout'));
+    });
+    req.end();
+  });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS, body: '' };
@@ -38,6 +75,7 @@ exports.handler = async (event) => {
   const q = event.queryStringParameters?.q || '';
 
   if (!allowedPath(path)) {
+    console.warn('osrm-proxy bad path', path && path.slice(0, 120));
     return {
       statusCode: 400,
       headers: { ...CORS, 'Content-Type': 'application/json' },
@@ -51,32 +89,27 @@ exports.handler = async (event) => {
   for (let i = 0; i < MIRRORS.length; i++) {
     const base = MIRRORS[i];
     const url = `${base}/${path}${query ? `?${query}` : ''}`;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25000);
     try {
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'RightMap/1.0 (https://rightmap.app; OSRM proxy)' },
-        signal: ctrl.signal
-      });
-      clearTimeout(timer);
-      const text = await res.text();
-      const tryNext = (res.status >= 500 || res.status === 429) && i < MIRRORS.length - 1;
+      const res = await httpsGet(url);
+      const tryNext =
+        (res.statusCode >= 500 || res.statusCode === 429) && i < MIRRORS.length - 1;
       if (tryNext) {
-        lastErr = new Error(`HTTP ${res.status} from ${base}`);
+        lastErr = new Error(`HTTP ${res.statusCode} from ${base}`);
+        console.warn(lastErr.message);
         continue;
       }
-      const ct = res.headers.get('content-type') || 'application/json';
+      const ct = (res.headers['content-type'] || 'application/json').split(';')[0];
       return {
-        statusCode: res.status,
+        statusCode: res.statusCode,
         headers: {
           ...CORS,
           'Content-Type': ct.includes('json') ? 'application/json; charset=utf-8' : ct
         },
-        body: text
+        body: res.body
       };
     } catch (e) {
-      clearTimeout(timer);
       lastErr = e;
+      console.warn('osrm-proxy mirror error', base, e.message);
     }
   }
 

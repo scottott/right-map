@@ -14,15 +14,33 @@ function useOsrmProxy() {
 }
 
 /** @param {string} path e.g. route/v1/driving/lon,lat;lon,lat (coords segment may be encodeURIComponent) */
-function osrmFetchUrl(path, queryString) {
-  if (useOsrmProxy()) {
-    const p = new URLSearchParams();
-    p.set('path', path);
-    if (queryString) p.set('q', queryString);
-    return `/.netlify/functions/osrm-proxy?${p}`;
-  }
+function osrmProxyUrl(path, queryString) {
+  const p = new URLSearchParams();
+  p.set('path', path);
+  if (queryString) p.set('q', queryString);
+  return `/.netlify/functions/osrm-proxy?${p}`;
+}
+
+function osrmDirectUrl(path, queryString) {
   const q = queryString ? `?${queryString}` : '';
   return `https://router.project-osrm.org/${path}${q}`;
+}
+
+/**
+ * Prefer same-origin proxy on production (CORS-safe errors). If proxy returns 502/503 or fails,
+ * fall back to the public OSRM host from the browser (often works when the demo is up).
+ */
+async function fetchOsrm(path, queryString) {
+  if (!useOsrmProxy()) {
+    return fetch(osrmDirectUrl(path, queryString));
+  }
+  try {
+    const res = await fetch(osrmProxyUrl(path, queryString));
+    if (res.status !== 502 && res.status !== 503) return res;
+  } catch (_) {
+    /* proxy or network error */
+  }
+  return fetch(osrmDirectUrl(path, queryString));
 }
 
 /** Distance in meters to place the "right-turn" via point past the intersection */
@@ -268,7 +286,7 @@ async function fetchRoute(coordPairs) {
     alternatives: 'true'
   });
   const path = `route/v1/driving/${encodeURIComponent(coords)}`;
-  const res = await fetch(osrmFetchUrl(path, params.toString()));
+  const res = await fetchOsrm(path, params.toString());
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || 'Routing failed');
@@ -286,7 +304,7 @@ async function fetchRouteWithWaypoints(coordPairs) {
     alternatives: 'false'
   });
   const path = `route/v1/driving/${encodeURIComponent(coords)}`;
-  const res = await fetch(osrmFetchUrl(path, params.toString()));
+  const res = await fetchOsrm(path, params.toString());
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || 'Routing failed');
@@ -299,7 +317,7 @@ async function fetchRouteWithWaypoints(coordPairs) {
 /** Snap (lon, lat) to the nearest road; returns { lat, lon } or null. */
 async function snapToRoad(lon, lat) {
   const path = `nearest/v1/driving/${lon},${lat}`;
-  const res = await fetch(osrmFetchUrl(path, 'number=1'));
+  const res = await fetchOsrm(path, 'number=1');
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.waypoints || data.waypoints.length === 0) return null;
