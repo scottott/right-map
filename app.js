@@ -26,21 +26,31 @@ function osrmDirectUrl(path, queryString) {
   return `https://router.project-osrm.org/${path}${q}`;
 }
 
+/** Avoid hanging ~1min on a stuck OSRM demo (Safari will wait a long time by default). */
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
+const OSRM_CLIENT_MS = 14000;
+
 /**
  * Prefer same-origin proxy on production (CORS-safe errors). If proxy returns 502/503 or fails,
  * fall back to the public OSRM host from the browser (often works when the demo is up).
  */
 async function fetchOsrm(path, queryString) {
+  const direct = osrmDirectUrl(path, queryString);
   if (!useOsrmProxy()) {
-    return fetch(osrmDirectUrl(path, queryString));
+    return fetchWithTimeout(direct, OSRM_CLIENT_MS);
   }
   try {
-    const res = await fetch(osrmProxyUrl(path, queryString));
+    const res = await fetchWithTimeout(osrmProxyUrl(path, queryString), OSRM_CLIENT_MS);
     if (res.status !== 502 && res.status !== 503) return res;
   } catch (_) {
     /* proxy or network error */
   }
-  return fetch(osrmDirectUrl(path, queryString));
+  return fetchWithTimeout(direct, OSRM_CLIENT_MS);
 }
 
 /** Distance in meters to place the "right-turn" via point past the intersection */

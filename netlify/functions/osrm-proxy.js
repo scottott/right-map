@@ -1,6 +1,7 @@
 /**
- * Same-origin proxy for OSRM (avoids browser CORS when the demo returns errors without CORS headers).
- * Uses Node https (no fetch) for compatibility with all Netlify Lambda Node runtimes.
+ * Same-origin proxy for OSRM. Must finish within Netlify's default ~10s function limit
+ * (long upstream timeouts cause Netlify to return 502 before we respond).
+ * Hits both public mirrors in parallel and returns the best successful response.
  */
 
 const https = require('https');
@@ -10,6 +11,9 @@ const MIRRORS = [
   'https://router.project-osrm.org',
   'https://routing.openstreetmap.de/routed-car'
 ];
+
+/** Stay under Netlify's ~10s sync limit including cold start + JSON parse. */
+const UPSTREAM_MS = 6500;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +28,7 @@ function allowedPath(p) {
   return true;
 }
 
-function httpsGet(urlString) {
+function httpsGet(urlString, timeoutMs) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlString);
     const req = https.request(
@@ -35,7 +39,7 @@ function httpsGet(urlString) {
           'User-Agent': 'RightMap/1.0 (https://rightmap.app; OSRM proxy)',
           Accept: 'application/json'
         },
-        timeout: 28000
+        timeout: timeoutMs
       },
       (res) => {
         const chunks = [];
@@ -58,17 +62,41 @@ function httpsGet(urlString) {
   });
 }
 
+function lambdaJson(statusCode, body) {
+  return {
+    statusCode,
+    headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8' },
+    body
+  };
+}
+
+function pickBestResponse(settled) {
+  const ok = [];
+  const other = [];
+  for (const s of settled) {
+    if (s.status !== 'fulfilled') continue;
+    const r = s.value;
+    if (r.statusCode >= 200 && r.statusCode < 300) ok.push(r);
+    else other.push(r);
+  }
+  if (ok.length) {
+    ok.sort((a, b) => a.statusCode - b.statusCode);
+    return ok[0];
+  }
+  if (other.length) {
+    other.sort((a, b) => (a.statusCode || 999) - (b.statusCode || 999));
+    return other[0];
+  }
+  return null;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS, body: '' };
   }
 
   if (event.httpMethod !== 'GET') {
-    return {
-      statusCode: 405,
-      headers: { ...CORS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Method not allowed' })
-    };
+    return lambdaJson(405, JSON.stringify({ error: 'Method not allowed' }));
   }
 
   const path = event.queryStringParameters?.path;
@@ -76,49 +104,40 @@ exports.handler = async (event) => {
 
   if (!allowedPath(path)) {
     console.warn('osrm-proxy bad path', path && path.slice(0, 120));
-    return {
-      statusCode: 400,
-      headers: { ...CORS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Invalid path' })
-    };
+    return lambdaJson(400, JSON.stringify({ error: 'Invalid path' }));
   }
 
   const query = q ? (q.startsWith('?') ? q.slice(1) : q) : '';
-  let lastErr = null;
+  const qs = query ? `?${query}` : '';
+  const urls = MIRRORS.map((base) => `${base}/${path}${qs}`);
 
-  for (let i = 0; i < MIRRORS.length; i++) {
-    const base = MIRRORS[i];
-    const url = `${base}/${path}${query ? `?${query}` : ''}`;
-    try {
-      const res = await httpsGet(url);
-      const tryNext =
-        (res.statusCode >= 500 || res.statusCode === 429) && i < MIRRORS.length - 1;
-      if (tryNext) {
-        lastErr = new Error(`HTTP ${res.statusCode} from ${base}`);
-        console.warn(lastErr.message);
-        continue;
-      }
-      const ct = (res.headers['content-type'] || 'application/json').split(';')[0];
-      return {
-        statusCode: res.statusCode,
-        headers: {
-          ...CORS,
-          'Content-Type': ct.includes('json') ? 'application/json; charset=utf-8' : ct
-        },
-        body: res.body
-      };
-    } catch (e) {
-      lastErr = e;
-      console.warn('osrm-proxy mirror error', base, e.message);
-    }
+  const settled = await Promise.allSettled(urls.map((u) => httpsGet(u, UPSTREAM_MS)));
+  const rejected = settled.filter((s) => s.status === 'rejected');
+  if (rejected.length) {
+    console.warn(
+      'osrm-proxy upstream errors',
+      rejected.map((s) => s.reason && s.reason.message).join('; ')
+    );
   }
 
+  const best = pickBestResponse(settled);
+  if (!best) {
+    return lambdaJson(
+      502,
+      JSON.stringify({
+        message: 'Routing service timed out or unavailable. Try again.',
+        detail: 'Both OSRM mirrors failed within deadline'
+      })
+    );
+  }
+
+  const ct = (best.headers['content-type'] || 'application/json').split(';')[0];
   return {
-    statusCode: 502,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: 'Routing service unavailable. Try again in a moment.',
-      detail: lastErr && lastErr.message ? lastErr.message : 'upstream failed'
-    })
+    statusCode: best.statusCode,
+    headers: {
+      ...CORS,
+      'Content-Type': ct.includes('json') ? 'application/json; charset=utf-8' : ct
+    },
+    body: best.body
   };
 };
