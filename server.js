@@ -5,15 +5,27 @@
 const express = require('express');
 const path = require('path');
 const https = require('https');
+const dns = require('dns');
 const { URL } = require('url');
+
+/** Render / many hosts resolve OSRM to IPv6 first; outbound v6 is often broken → force IPv4. */
+dns.setDefaultResultOrder('ipv4first');
 
 const MIRRORS = [
   'https://router.project-osrm.org',
   'https://routing.openstreetmap.de/routed-car'
 ];
 
-/** Per-mirror deadline; two mirrors run in parallel (was 6500 for Netlify’s ~10s function cap). */
-const UPSTREAM_MS = 14000;
+/** Per-mirror deadline; two mirrors run in parallel. */
+const UPSTREAM_MS = 28000;
+
+const osrmAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 16,
+  lookup(hostname, _opts, cb) {
+    dns.lookup(hostname, { family: 4, all: false }, cb);
+  }
+});
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -30,14 +42,19 @@ function allowedPath(p) {
 
 function httpsGet(urlString, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
+    const u = new URL(urlString);
     const req = https.request(
-      url,
       {
+        agent: osrmAgent,
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
         method: 'GET',
         headers: {
           'User-Agent': 'RightMap/1.0 (https://rightmap.app; OSRM proxy)',
-          Accept: 'application/json'
+          Accept: 'application/json',
+          Connection: 'keep-alive'
         },
         timeout: timeoutMs
       },
