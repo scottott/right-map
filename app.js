@@ -7,10 +7,14 @@
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'RightTurnRoutePoC/1.0 (contact@example.com)';
 
-/** Use Netlify function on production so OSRM errors still get CORS + optional mirror fallback. */
+/** Same-origin OSRM proxy (Render /api/osrm-proxy or legacy Netlify). */
 function useOsrmProxy() {
   const h = typeof window !== 'undefined' ? window.location.hostname : '';
-  return h === 'rightmap.app' || h.endsWith('.netlify.app');
+  return (
+    h === 'rightmap.app' ||
+    h.endsWith('.netlify.app') ||
+    h.endsWith('.onrender.com')
+  );
 }
 
 /** @param {string} path e.g. route/v1/driving/lon,lat;lon,lat (coords segment may be encodeURIComponent) */
@@ -18,7 +22,10 @@ function osrmProxyUrl(path, queryString) {
   const p = new URLSearchParams();
   p.set('path', path);
   if (queryString) p.set('q', queryString);
-  return `/.netlify/functions/osrm-proxy?${p}`;
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('.netlify.app')) {
+    return `/.netlify/functions/osrm-proxy?${p}`;
+  }
+  return `/api/osrm-proxy?${p}`;
 }
 
 function osrmDirectUrl(path, queryString) {
