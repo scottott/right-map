@@ -40,13 +40,23 @@ function fetchWithTimeout(url, ms) {
   return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
 }
 
-/** Public OSRM from the browser — keep bounded so the UI doesn’t hang if the demo is down. */
-const OSRM_DIRECT_CLIENT_MS = 25000;
+/** Public OSRM from the browser — first hop when not using the proxy. */
+const OSRM_DIRECT_CLIENT_MS = 30000;
+/** After the proxy failed, allow a bit longer for a last-chance direct call. */
+const OSRM_DIRECT_FALLBACK_MS = 45000;
 /**
- * Same-origin Render proxy: allow long enough for cold start + upstream (Netlify used ~10s cap;
- * Render can spin up slowly; OSRM mirrors use ~6.5s each server-side).
+ * Same-origin Render proxy: cold start can take ~1 min on free; paid can still queue; OSRM mirrors
+ * can be slow — stay under typical platform request ceilings (~100s).
  */
-const OSRM_PROXY_CLIENT_MS = 95000;
+const OSRM_PROXY_CLIENT_MS = 90000;
+
+/**
+ * Wake Render before the user taps Get Routes (reduces “first request” cold start).
+ */
+function warmRenderService() {
+  if (!useOsrmProxy()) return;
+  fetch('/', { method: 'HEAD', cache: 'no-store' }).catch(() => {});
+}
 
 /**
  * Prefer same-origin proxy on production (CORS-safe errors). If proxy returns 502/503 or fails,
@@ -57,13 +67,19 @@ async function fetchOsrm(path, queryString) {
   if (!useOsrmProxy()) {
     return fetchWithTimeout(direct, OSRM_DIRECT_CLIENT_MS);
   }
-  try {
-    const res = await fetchWithTimeout(osrmProxyUrl(path, queryString), OSRM_PROXY_CLIENT_MS);
-    if (res.status !== 502 && res.status !== 503) return res;
-  } catch (_) {
-    /* proxy or network error */
+  const proxyUrl = osrmProxyUrl(path, queryString);
+  const tryProxy = () => fetchWithTimeout(proxyUrl, OSRM_PROXY_CLIENT_MS);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await tryProxy();
+      if (res.status !== 502 && res.status !== 503) return res;
+      break;
+    } catch (_) {
+      if (attempt === 0) await delay(5000);
+    }
   }
-  return fetchWithTimeout(direct, OSRM_DIRECT_CLIENT_MS);
+  return fetchWithTimeout(direct, OSRM_DIRECT_FALLBACK_MS);
 }
 
 /** Distance in meters to place the "right-turn" via point past the intersection */
@@ -770,6 +786,7 @@ function initTheme() {
 
 initTheme();
 initMap();
+warmRenderService();
 initViewToggle();
 initFollowLocation();
 

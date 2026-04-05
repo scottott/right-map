@@ -12,7 +12,8 @@ const MIRRORS = [
   'https://routing.openstreetmap.de/routed-car'
 ];
 
-const UPSTREAM_MS = 6500;
+/** Per-mirror deadline; two mirrors run in parallel (was 6500 for Netlify’s ~10s function cap). */
+const UPSTREAM_MS = 14000;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -133,6 +134,8 @@ app.get('/api/osrm-proxy', async (req, res) => {
 
 app.use(express.static(root));
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`RightMap listening on ${port}`);
 });
+server.requestTimeout = 115000;
+server.headersTimeout = 120000;
