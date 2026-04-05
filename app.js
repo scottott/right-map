@@ -7,14 +7,13 @@
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'RightTurnRoutePoC/1.0 (contact@example.com)';
 
-/** Same-origin OSRM proxy (Render /api/osrm-proxy or legacy Netlify). */
+/**
+ * Only Netlify needs the serverless proxy (AWS egress reaches OSRM; short client timeout).
+ * Render’s datacenter often cannot reach public OSRM → 502; the browser can, with CORS.
+ */
 function useOsrmProxy() {
   const h = typeof window !== 'undefined' ? window.location.hostname : '';
-  return (
-    h === 'rightmap.app' ||
-    h.endsWith('.netlify.app') ||
-    h.endsWith('.onrender.com')
-  );
+  return h.endsWith('.netlify.app');
 }
 
 /** @param {string} path e.g. route/v1/driving/lon,lat;lon,lat (coords segment may be encodeURIComponent) */
@@ -22,15 +21,18 @@ function osrmProxyUrl(path, queryString) {
   const p = new URLSearchParams();
   p.set('path', path);
   if (queryString) p.set('q', queryString);
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('.netlify.app')) {
-    return `/.netlify/functions/osrm-proxy?${p}`;
-  }
-  return `/api/osrm-proxy?${p}`;
+  return `/.netlify/functions/osrm-proxy?${p}`;
 }
 
-function osrmDirectUrl(path, queryString) {
+/** Same bases as server proxy / Netlify function (parallel mirrors). */
+const OSRM_BROWSER_MIRRORS = [
+  'https://router.project-osrm.org',
+  'https://routing.openstreetmap.de/routed-car'
+];
+
+function osrmMirrorUrls(path, queryString) {
   const q = queryString ? `?${queryString}` : '';
-  return `https://router.project-osrm.org/${path}${q}`;
+  return OSRM_BROWSER_MIRRORS.map((base) => `${base}/${path}${q}`);
 }
 
 /** Avoid hanging forever on a stuck OSRM demo (Safari will wait a long time by default). */
@@ -40,68 +42,49 @@ function fetchWithTimeout(url, ms, init = {}) {
   return fetch(url, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(t));
 }
 
-/** Public OSRM from the browser — local / when proxy is skipped. */
-const OSRM_DIRECT_CLIENT_MS = 30000;
-/** First attempt to OSRM from the browser on production (CORS); avoids Render cold start when it works. */
-const OSRM_DIRECT_TRY_MS = 22000;
-/** After the proxy failed, allow a bit longer for a last-chance direct call. */
-const OSRM_DIRECT_FALLBACK_MS = 45000;
-/**
- * Same-origin Render proxy: stay under typical platform request ceilings (~100s).
- */
+/** Browser → public OSRM (Render/rightmap.app, localhost, preview URLs). */
+const OSRM_DIRECT_CLIENT_MS = 32000;
+
+/** Netlify: serverless proxy timeout. */
 const OSRM_PROXY_CLIENT_MS = 90000;
 
-/**
- * Netlify function only supports GET. Render uses POST so long route URLs are not clipped by query limits.
- */
 function fetchOsrmProxy(path, queryString) {
-  const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  if (host.endsWith('.netlify.app')) {
-    return fetchWithTimeout(osrmProxyUrl(path, queryString), OSRM_PROXY_CLIENT_MS);
-  }
-  return fetchWithTimeout('/api/osrm-proxy', OSRM_PROXY_CLIENT_MS, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, q: queryString || '' })
-  });
+  return fetchWithTimeout(osrmProxyUrl(path, queryString), OSRM_PROXY_CLIENT_MS);
 }
 
 /**
- * Wake Render before the user taps Get Routes (reduces “first request” cold start).
+ * Race OSRM mirrors from the browser (same idea as the Netlify function). CORS allows this on the public demos.
  */
-function warmRenderService() {
-  if (!useOsrmProxy()) return;
-  fetch('/', { method: 'HEAD', cache: 'no-store' }).catch(() => {});
+async function fetchOsrmDirectMirrors(path, queryString, ms) {
+  const urls = osrmMirrorUrls(path, queryString);
+  const settled = await Promise.allSettled(urls.map((u) => fetchWithTimeout(u, ms)));
+  const ok = [];
+  const other = [];
+  for (const s of settled) {
+    if (s.status !== 'fulfilled') continue;
+    const r = s.value;
+    if (r.ok) ok.push(r);
+    else other.push(r);
+  }
+  if (ok.length) {
+    ok.sort((a, b) => a.status - b.status);
+    return ok[0];
+  }
+  if (other.length) {
+    other.sort((a, b) => a.status - b.status);
+    return other[0];
+  }
+  throw new Error('Routing service timed out or unavailable. Try again.');
 }
 
 /**
- * On production: try public OSRM from the browser first (CORS + no proxy hop). If that fails, use
- * same-origin proxy (POST body avoids URL-length limits that break GET proxies). Then direct again.
+ * Netlify: same-origin function (dual mirror server-side). Elsewhere: browser → OSRM mirrors (Render cannot rely on server-side OSRM).
  */
 async function fetchOsrm(path, queryString) {
-  const direct = osrmDirectUrl(path, queryString);
-  if (!useOsrmProxy()) {
-    return fetchWithTimeout(direct, OSRM_DIRECT_CLIENT_MS);
+  if (useOsrmProxy()) {
+    return fetchOsrmProxy(path, queryString);
   }
-  try {
-    const d = await fetchWithTimeout(direct, OSRM_DIRECT_TRY_MS);
-    if (d.ok) return d;
-  } catch (_) {
-    /* CORS or network — use proxy */
-  }
-
-  const tryProxy = () => fetchOsrmProxy(path, queryString);
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await tryProxy();
-      if (res.status !== 502 && res.status !== 503) return res;
-      break;
-    } catch (_) {
-      if (attempt === 0) await delay(5000);
-    }
-  }
-  return fetchWithTimeout(direct, OSRM_DIRECT_FALLBACK_MS);
+  return fetchOsrmDirectMirrors(path, queryString, OSRM_DIRECT_CLIENT_MS);
 }
 
 /** Distance in meters to place the "right-turn" via point past the intersection */
@@ -808,7 +791,6 @@ function initTheme() {
 
 initTheme();
 initMap();
-warmRenderService();
 initViewToggle();
 initFollowLocation();
 
