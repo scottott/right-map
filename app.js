@@ -33,14 +33,20 @@ function osrmDirectUrl(path, queryString) {
   return `https://router.project-osrm.org/${path}${q}`;
 }
 
-/** Avoid hanging ~1min on a stuck OSRM demo (Safari will wait a long time by default). */
+/** Avoid hanging forever on a stuck OSRM demo (Safari will wait a long time by default). */
 function fetchWithTimeout(url, ms) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
 }
 
-const OSRM_CLIENT_MS = 14000;
+/** Public OSRM from the browser — keep bounded so the UI doesn’t hang if the demo is down. */
+const OSRM_DIRECT_CLIENT_MS = 25000;
+/**
+ * Same-origin Render proxy: allow long enough for cold start + upstream (Netlify used ~10s cap;
+ * Render can spin up slowly; OSRM mirrors use ~6.5s each server-side).
+ */
+const OSRM_PROXY_CLIENT_MS = 95000;
 
 /**
  * Prefer same-origin proxy on production (CORS-safe errors). If proxy returns 502/503 or fails,
@@ -49,15 +55,15 @@ const OSRM_CLIENT_MS = 14000;
 async function fetchOsrm(path, queryString) {
   const direct = osrmDirectUrl(path, queryString);
   if (!useOsrmProxy()) {
-    return fetchWithTimeout(direct, OSRM_CLIENT_MS);
+    return fetchWithTimeout(direct, OSRM_DIRECT_CLIENT_MS);
   }
   try {
-    const res = await fetchWithTimeout(osrmProxyUrl(path, queryString), OSRM_CLIENT_MS);
+    const res = await fetchWithTimeout(osrmProxyUrl(path, queryString), OSRM_PROXY_CLIENT_MS);
     if (res.status !== 502 && res.status !== 503) return res;
   } catch (_) {
     /* proxy or network error */
   }
-  return fetchWithTimeout(direct, OSRM_CLIENT_MS);
+  return fetchWithTimeout(direct, OSRM_DIRECT_CLIENT_MS);
 }
 
 /** Distance in meters to place the "right-turn" via point past the intersection */
@@ -699,7 +705,14 @@ document.getElementById('route-btn').addEventListener('click', async () => {
 
     setStatus('');
   } catch (err) {
-    setStatus(err.message || 'Something went wrong.', true);
+    const aborted =
+      err && (err.name === 'AbortError' || /abort/i.test(String(err.message || '')));
+    setStatus(
+      aborted
+        ? 'Routing timed out. If the site was idle, wait a minute and try again — or retry now.'
+        : err.message || 'Something went wrong.',
+      true
+    );
   } finally {
     btn.disabled = false;
   }
