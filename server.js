@@ -18,11 +18,11 @@ const UPSTREAM_MS = 14000;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS'
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
 };
 
 function allowedPath(p) {
-  if (!p || typeof p !== 'string' || p.length > 4096) return false;
+  if (!p || typeof p !== 'string' || p.length > 32768) return false;
   if (p.includes('..')) return false;
   if (!p.startsWith('route/v1/driving/') && !p.startsWith('nearest/v1/driving/')) return false;
   return true;
@@ -91,11 +91,8 @@ app.options('/api/osrm-proxy', (req, res) => {
   res.sendStatus(204);
 });
 
-app.get('/api/osrm-proxy', async (req, res) => {
+async function handleOsrmProxy(p, q, res) {
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
-
-  const p = req.query.path;
-  const q = req.query.q || '';
 
   if (!allowedPath(p)) {
     console.warn('osrm-proxy bad path', p && String(p).slice(0, 120));
@@ -130,6 +127,27 @@ app.get('/api/osrm-proxy', async (req, res) => {
     ct.includes('json') ? 'application/json; charset=utf-8' : ct
   );
   res.send(best.body);
+}
+
+/** GET kept for small URLs / curl; long routes use POST so query strings stay under proxy limits. */
+app.get('/api/osrm-proxy', async (req, res) => {
+  try {
+    await handleOsrmProxy(req.query.path, req.query.q || '', res);
+  } catch (e) {
+    console.error('osrm-proxy GET error', e && e.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Proxy error' });
+  }
+});
+
+const jsonBody = express.json({ limit: '512kb' });
+app.post('/api/osrm-proxy', jsonBody, async (req, res) => {
+  try {
+    const body = req.body || {};
+    await handleOsrmProxy(body.path, body.q || '', res);
+  } catch (e) {
+    console.error('osrm-proxy POST error', e && e.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Proxy error' });
+  }
 });
 
 app.use(express.static(root));

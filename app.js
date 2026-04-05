@@ -34,21 +34,37 @@ function osrmDirectUrl(path, queryString) {
 }
 
 /** Avoid hanging forever on a stuck OSRM demo (Safari will wait a long time by default). */
-function fetchWithTimeout(url, ms) {
+function fetchWithTimeout(url, ms, init = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+  return fetch(url, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(t));
 }
 
-/** Public OSRM from the browser — first hop when not using the proxy. */
+/** Public OSRM from the browser — local / when proxy is skipped. */
 const OSRM_DIRECT_CLIENT_MS = 30000;
+/** First attempt to OSRM from the browser on production (CORS); avoids Render cold start when it works. */
+const OSRM_DIRECT_TRY_MS = 22000;
 /** After the proxy failed, allow a bit longer for a last-chance direct call. */
 const OSRM_DIRECT_FALLBACK_MS = 45000;
 /**
- * Same-origin Render proxy: cold start can take ~1 min on free; paid can still queue; OSRM mirrors
- * can be slow — stay under typical platform request ceilings (~100s).
+ * Same-origin Render proxy: stay under typical platform request ceilings (~100s).
  */
 const OSRM_PROXY_CLIENT_MS = 90000;
+
+/**
+ * Netlify function only supports GET. Render uses POST so long route URLs are not clipped by query limits.
+ */
+function fetchOsrmProxy(path, queryString) {
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  if (host.endsWith('.netlify.app')) {
+    return fetchWithTimeout(osrmProxyUrl(path, queryString), OSRM_PROXY_CLIENT_MS);
+  }
+  return fetchWithTimeout('/api/osrm-proxy', OSRM_PROXY_CLIENT_MS, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, q: queryString || '' })
+  });
+}
 
 /**
  * Wake Render before the user taps Get Routes (reduces “first request” cold start).
@@ -59,16 +75,22 @@ function warmRenderService() {
 }
 
 /**
- * Prefer same-origin proxy on production (CORS-safe errors). If proxy returns 502/503 or fails,
- * fall back to the public OSRM host from the browser (often works when the demo is up).
+ * On production: try public OSRM from the browser first (CORS + no proxy hop). If that fails, use
+ * same-origin proxy (POST body avoids URL-length limits that break GET proxies). Then direct again.
  */
 async function fetchOsrm(path, queryString) {
   const direct = osrmDirectUrl(path, queryString);
   if (!useOsrmProxy()) {
     return fetchWithTimeout(direct, OSRM_DIRECT_CLIENT_MS);
   }
-  const proxyUrl = osrmProxyUrl(path, queryString);
-  const tryProxy = () => fetchWithTimeout(proxyUrl, OSRM_PROXY_CLIENT_MS);
+  try {
+    const d = await fetchWithTimeout(direct, OSRM_DIRECT_TRY_MS);
+    if (d.ok) return d;
+  } catch (_) {
+    /* CORS or network — use proxy */
+  }
+
+  const tryProxy = () => fetchOsrmProxy(path, queryString);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
